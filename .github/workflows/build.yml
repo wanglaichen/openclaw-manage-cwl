@@ -80,6 +80,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: 配置 Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
       - name: 获取并递增版本
         id: version
         run: |
@@ -98,8 +103,6 @@ jobs:
 
       - name: 提交版本
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
           git add package.json
           git commit -m "chore: 递增版本号"
           git push origin main
@@ -118,6 +121,11 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+
+      - name: 配置 Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
 
       - name: 下载 artifacts
         uses: actions/download-artifact@v4
