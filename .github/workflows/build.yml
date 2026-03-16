@@ -21,7 +21,6 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            rust_targets: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.platform }}
     name: Build (Windows)
@@ -33,7 +32,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust_targets }}
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -79,7 +78,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
+          persist-credentials: true
 
       - name: 获取并递增版本
         id: version
@@ -119,7 +118,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN }}
 
       - name: 下载 artifacts
         uses: actions/download-artifact@v4
