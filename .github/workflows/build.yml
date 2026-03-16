@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-# 取消同一分支上的旧构建
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -23,10 +22,9 @@ jobs:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             rust_targets: x86_64-pc-windows-msvc
-            label: Windows
 
     runs-on: ${{ matrix.platform }}
-    name: Build (${{ matrix.label }})
+    name: Build (Windows)
 
     steps:
       - name: Checkout
@@ -41,7 +39,6 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          cache-on-failure: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -49,7 +46,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
       - name: Build Tauri app
@@ -57,20 +54,21 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Windows artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: artifacts-windows
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: error
 
-  # ── 自动递增版本 ──────────────────────────────────────
+  # ── 递增版本 ───────────────────────────────────────
   bump-version:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
 
     outputs:
       new_version: ${{ steps.version.outputs.new_version }}
@@ -79,37 +77,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
 
       - name: 获取并递增版本
         id: version
         run: |
-          # 获取当前版本
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "当前版本: $CURRENT_VERSION"
           
-          # 分割版本号
-          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
-          MAJOR=${VERSION_PARTS[0]}
-          MINOR=${VERSION_PARTS[1]}
-          PATCH=${VERSION_PARTS[2]}
-          
-          # 递增 patch 版本
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          IFS='.' read -ra V <<< "$CURRENT_VERSION"
+          NEW_PATCH=$((${V[2]} + 1))
+          NEW_VERSION="${V[0]}.${V[1]}.$NEW_PATCH"
           echo "新版本: $NEW_VERSION"
-          
-          # 输出新版本
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: 更新 package.json
         run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          npm version $NEW_VERSION --no-git-tag-version
-          cat package.json | grep '"version"'
+          npm version ${{ steps.version.outputs.new_version }} --no-git-tag-version
 
-      - name: 提交版本更新
+      - name: 提交版本
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -117,42 +105,37 @@ jobs:
           git commit -m "chore: 递增版本号"
           git push origin main
 
-  # ── 自动打标签 ───────────────────────────────────────
+  # ── 打标签 ─────────────────────────────────────────
   tag:
     needs: [build, bump-version]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN }}
 
-      - name: 下载构建产物
+      - name: 下载 artifacts
         uses: actions/download-artifact@v4
         with:
           name: artifacts-windows
           path: artifacts
 
-      - name: 创建 Tag
+      - name: 创建并推送 Tag
         run: |
           TAG_NAME="v${{ needs.bump-version.outputs.new_version }}"
-          
-          # 检查 tag 是否存在
           if git rev-parse "refs/tags/$TAG_NAME" >/dev/null 2>&1; then
-            echo "Tag $TAG_NAME 已存在，删除后重新创建"
             git push origin :refs/tags/$TAG_NAME
           fi
-          
-          # 创建 tag
           git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
-          
-          # 推送 tag
           git push origin "$TAG_NAME"
           echo "✅ 已推送 tag: $TAG_NAME"
 
       - name: 列出产物
-        run: |
-          echo "构建产物:"
-          ls -la artifacts/
+        run: ls -la artifacts/
